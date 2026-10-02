@@ -1,0 +1,30 @@
+{
+  "name": "dsh-browser-live",
+  "version": "0.1.0",
+  "description": "One-command ZCode-IAB-like browser live view for DeepSeek Harness: provisions a Neko virtual Chromium with CDP, mounts the official browser-use provider in attach mode, and auto-opens a right-sidebar live panel while the agent drives the browser.",
+  "type": "module",
+  "main": "lib/index.js",
+  "files": [
+    "lib/",
+    "host/",
+    "scripts/",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md"
+  ],
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "platform": "web" },
+    "icon": "./icon.svg"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-browser-use": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-experimental-browser-use-playwright-mcp": "0.1.7-rc.2"
+  },
+  "license": "MIT"
+}
