@@ -1,7 +1,7 @@
 {
   "name": "dsh-browser-live",
-  "version": "0.1.0",
-  "description": "One-command ZCode-IAB-like browser live view for DeepSeek Harness: provisions a Neko virtual Chromium with CDP, mounts the official browser-use provider in attach mode, and auto-opens a right-sidebar live panel while the agent drives the browser.",
+  "version": "0.2.0",
+  "description": "Per-session ZCode-IAB-like browser live view for DeepSeek Harness: provisions a bounded pool of Neko virtual Chromium containers (one CDP endpoint, profile volume, and viewer path per session), mounts a per-session browser-use provider in attach mode, adds browser_live_* one-shot tools, and auto-opens a right-sidebar live panel while the agent drives the browser.",
   "type": "module",
   "main": "lib/index.js",
   "files": [
@@ -24,7 +24,22 @@
   },
   "dependencies": {
     "@deepseek-ai/dsh-browser-use": "0.1.7-rc.2",
-    "@deepseek-ai/dsh-experimental-browser-use-playwright-mcp": "0.1.7-rc.2"
+    "@deepseek-ai/dsh-experimental-browser-use-runtime": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-mcp-client": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-scope": "0.1.7-rc.2",
+    "@playwright/mcp": "0.0.80",
+    "playwright-core": "1.63.0-alpha-2026-08-31"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.4",
+    "@deepseek-ai/dsh-browser-use": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-experimental-browser-use-runtime": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-mcp-client": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-scope": "0.1.7-rc.2",
+    "@deepseek-ai/dsh-tools": "0.1.7-rc.2",
+    "@deepseek-ai/schemastery": "~3.18.4",
+    "@playwright/mcp": "0.0.80",
+    "playwright-core": "1.63.0-alpha-2026-08-31"
   },
   "license": "MIT"
 }

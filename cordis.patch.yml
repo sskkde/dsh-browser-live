@@ -1,21 +1,15 @@
 # dsh-browser-live bundle layer.
 #
-# Mounts this plugin plus the official browser-use provider stack it carries as
-# dependencies, and opts the web profile into DSH's built-in iframe sidebar
-# browser. The provider attaches over CDP to the Neko virtual Chromium this
-# plugin provisions on the host, so the agent drives the same browser the user
-# watches.
+# Mounts the browser-use registry service and this plugin, which carries the
+# per-session browser provider itself (lib/provider.js). The official
+# exclusive attach row (`browser-use-playwright-mcp-neko`) is intentionally NOT
+# inserted: browserUse is a single-slot registration, and the v0.1.0 insert row
+# is simply gone — the official package is no longer mounted by any patch.
 - insert:
-    - id: browser-live
-      name: dsh-browser-live
     - id: browser-use-registry
       name: '@deepseek-ai/dsh-browser-use'
-    - id: browser-use-playwright-mcp-neko
-      name: '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp'
-      config:
-        mode: attach
-        endpoint: 'http://127.0.0.1:9222'
-        toolCallTimeoutMs: 60000
+    - id: browser-live
+      name: dsh-browser-live
 
 # web-app bundle disables ui-sidebar-browser unless profileContext is desktop;
 # the row's own comment marks web profiles as opt-in. The live panel below and
