@@ -1,7 +1,7 @@
 {
   "name": "dsh-browser-live",
-  "version": "0.3.0",
-  "description": "Per-session ZCode-IAB-like browser live view for DeepSeek Harness: provisions a bounded pool of Neko virtual Chromium containers (one CDP endpoint, profile volume, and viewer path per session), mounts a per-session browser-use provider in attach mode, adds browser_live_* one-shot tools, and auto-opens a right-sidebar live panel while the agent drives the browser.",
+  "version": "0.4.0",
+  "description": "Per-session ZCode-IAB-like browser live view for DeepSeek Harness: provisions a bounded pool of Neko virtual Chromium containers (one CDP endpoint, profile volume, download folder, and viewer path per session), mounts a per-session browser-use provider in attach mode, adds browser_live_* one-shot tools (open/script/recipe/status/fetch/download/state), and auto-opens a right-sidebar live panel while the agent drives the browser.",
   "type": "module",
   "main": "lib/index.js",
   "files": [

@@ -5,3 +5,9 @@ FROM m1k1o/neko:chromium
 # managed policy forbids DevTools entirely; re-enable it (0 = always available).
 COPY --chown=root:root chromium.conf /etc/neko/supervisord/chromium.conf
 RUN sed -i 's/"DeveloperToolsAvailability": 2/"DeveloperToolsAvailability": 0/' /etc/chromium/policies/managed/policies.json
+
+# Upstream neko also blocks downloads outright ("DownloadRestrictions": 3), and a
+# download that is never written is a download the agent can never reach — the
+# browser-live download channel (host mount of /home/neko/Downloads) has nothing
+# to collect. 0 = no special restrictions, i.e. ordinary browser behaviour.
+RUN sed -i 's/"DownloadRestrictions": 3/"DownloadRestrictions": 0/' /etc/chromium/policies/managed/policies.json
