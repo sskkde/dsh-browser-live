@@ -13,7 +13,7 @@ After install + restart, on a host with Docker and passwordless sudo, everything
 2. **nginx reverse proxy** — the vhost fronting the DSH web UI gets one `location` block per session viewer (`/browser/<short>/` → `127.0.0.1:8080+2n`), WebSocket-capable and under the existing auth. Needs passwordless sudo; otherwise run `scripts/provision-host.sh` manually.
 3. **Per-session browser provider** — the bundle patch mounts `@deepseek-ai/dsh-browser-use` (registry) and this plugin, and **disables** the official exclusive `browser-use-playwright-mcp-neko` attach row (that row lets only one session hold the browser). This plugin's own provider (lib/provider.js) spawns one `@playwright/mcp` attachment per live session against a per-activation loopback **CDP proxy** (lib/cdp-proxy.js) that resolves the session's *current* container port per connection — so the MCP process can spawn before any slot exists, and a re-allocated slot can never point it at another session's browser. Slots and containers are lazy: the MCP process (which publishes the tools) starts with the session; the slot is taken and the container started on the first browser tool call (`~5s` warm image). The server is spawned with `--caps` (see `mcpCaps`) and with MCP reconnect enabled, and if its container is ever replaced the provider replaces the server before the next call, so a session that comes back after an eviction or a long idle still works.
 4. **`browser_live_*` one-shot tools** — the high-frequency capabilities of the retired `@anweat/dsh-browser`, re-implemented against the session's own container: `browser_live_open` (open + read + screenshot, optional console/network capture, `waitUntil`/`waitFor` for late content), `browser_live_script` + `browser_live_script_catalog` (builtin read-only article-clean/links/jsonld/forms with pinned SHA-256), `browser_live_recipe` (declarative replay, ≤25 steps), `browser_live_status` (container, viewer, downloads directory, open tabs), `browser_live_fetch` (render a URL in a throwaway tab — the replacement for `web_fetch_pro`), `browser_live_download` (list/save files the browser downloaded), and `browser_live_state` (save/restore shared login state). Every tool that targets a page accepts `tab` to pick one explicitly. Interactive control stays with the session's `mcp__playwright-mcp__browser_*` tools.
-5. **Auto-popup live panel** — the client plugin registers a right-sidebar tab ("浏览器直播") whose iframe points at the **current session's** viewer (resolved via `/browser-live/session?session=<id>`, legacy `/browser/` as fallback), and opens it automatically for the first turn of each session in which the agent calls any browser tool — matching `browser_*`, `browser_live_*`, and MCP-namespaced `mcp__<server>__browser_*` tool names.
+5. **Auto-popup live panel** — the client plugin registers a right-sidebar tab ("浏览器直播") whose iframe points at the **current session's** viewer (resolved via `/browser-live/session?session=<id>`, legacy `/browser/` as fallback), and opens it the moment the running turn appends its first browser tool call — matching `browser_*`, `browser_live_*`, and MCP-namespaced `mcp__<server>__browser_*` tool names. The trigger is a live subscription to the on-screen session's event feed, so the panel is up while the agent is still driving the browser; a completed-turn footer (`conversation.chat.turnTail`) is kept only as the replay/reload fallback. The embedded viewer also skips n.eko's login gate: Neko's frontend has no URL/token login, so the panel drives the app's own Vuex `login` action with the fixed display name `DSH` (same-origin frame), hides the form while that settles, and hands keyboard focus back if Neko's autofocus pulled it into the frame. This covers the panel only — opening the viewer URL directly still shows the login form.
 
 ## Requirements
 
@@ -33,7 +33,7 @@ After install + restart, on a host with Docker and passwordless sudo, everything
 - **Login state**: `browser_live_state` keeps Playwright storage-state files in `~/.dsh/data/browser-live/states` (`storageStateDir`), shared by every session — so treat that directory as credentials (files are written mode 600). Cookies are always restored; localStorage is restored for origins that are open in the session.
 - **Egress**: `egressProxy` becomes Chromium's `--proxy-server` (`%(ENV_CHROMIUM_PROXY)s` in the image conf, default `direct://`). It is a *launch* flag, so it applies when a container is created — and it is deliberately not set through the MCP's `--proxy-server`, which an attached (CDP) server ignores because it reuses the browser's existing default context. Any manual `docker run` of the image must therefore pass `-e CHROMIUM_PROXY=direct://` (supervisord refuses to start a program whose expansion has no variable).
 - The image is rebuilt (`docker build -q`, cached) at container start, so edits to `host/chromium.conf` and `host/Dockerfile` self-heal on the next start; an already-running container keeps its image until restarted. The Dockerfile also lifts upstream neko's `"DownloadRestrictions": 3` (block all downloads) — without that, Chromium never writes a downloaded file anywhere.
-- The right pane opens automatically but never steals OS focus — it is in-page navigation only.
+- The right pane opens automatically but never steals OS focus — it is in-page navigation only. The viewer's auto-login uses the display name `DSH` (constant `VIEWER_NAME` in `lib/client.js`); set it to an empty string to bring the login form back.
 
 ## Configuration
 
@@ -46,6 +46,48 @@ After install + restart, on a host with Docker and passwordless sudo, everything
 | `mcpCaps` | `['storage','network','pdf','testing']` | Extra Playwright MCP capability groups (`storage`, `network`, `pdf`, `testing`, `vision`, `devtools`). Each one adds tools to every session's schema (24 → 51 tools with the default), so trim with `[]` when context is tight. |
 | `egressProxy` | `''` | Proxy every session browser sends through (`http://host:3128`, `socks5://host:1080`); empty means direct. |
 | `storageStateDir` | `''` | Where `browser_live_state` keeps shared login states; empty uses `<DSH_HOME>/data/browser-live/states`. |
+| `toolGateway` | `false` | Publish a small tool surface and disclose capability groups on demand (see below); starts the MCP server with every group and ignores `mcpCaps`. |
+
+## Gateway mode (progressive disclosure)
+
+`toolGateway: true` puts a small MCP gateway (`lib/gateway/server.js`) between the harness and each session's Playwright MCP server. Without it, every session that carries a browser publishes the MCP server's whole tool surface — 24 tools by default, 51 with the default `mcpCaps`, 70 with every group. In gateway mode the model sees **13 tools** until it asks for more:
+
+| Surface | Tools |
+|---|---|
+| always | `browser_gateway_groups`, `browser_gateway_enable`, `browser_gateway_call` |
+| resident | `browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_press_key`, `browser_fill_form`, `browser_take_screenshot`, `browser_wait_for`, `browser_tabs`, `browser_evaluate` |
+| on demand | the capability groups below |
+
+The three meta tools:
+
+- **`browser_gateway_groups`** (no arguments) — status (`starting` / `ready` / `degraded`), how many tools are visible, which groups are enabled, the resident tools currently available, and a table of every group with its tool count and whether the inner server actually published it.
+- **`browser_gateway_enable({group})`** — publish that group's tools and emit `notifications/tools/list_changed`; idempotent; an unknown name is rejected with the valid list. The state is per gateway process, i.e. per session activation.
+- **`browser_gateway_call({tool, arguments?})`** — call any Playwright tool by name without enabling its group, for a one-off call. The result is the tool's result unchanged (image blocks, `structuredContent`, `isError`).
+
+Groups (all off until enabled; each name covers the Playwright MCP tools beyond the resident ten):
+
+| Group | Tools |
+|---|---|
+| `core` | 14 — close, resize, console, dialogs, upload, drop, find, navigate back, `run_code_unsafe`, network requests, drag, hover, select option |
+| `storage` | 17 — cookies, storage state, localStorage, sessionStorage |
+| `network` | 4 — network state, request routing |
+| `testing` | 5 — locator generation and `verify_*` assertions |
+| `pdf` | 1 — `browser_pdf_save` |
+| `vision` | 6 — coordinate mouse control |
+| `devtools` | 13 — resume, highlight, annotate, recording, tracing, video |
+
+How it works, and what it changes:
+
+- The gateway starts the Playwright MCP server **with every group** (`--caps storage,network,testing,pdf,vision,devtools`) once, so enabling a group never restarts the browser. The 70 tool schemas still live in the inner process; only the list the model sees stays small. `mcpCaps` is ignored in this mode (a warning says so).
+- `initialize` / `ping` / `tools/list` are answered by the gateway, so the session handshake works even while the inner server is still starting. While the inner is down only the meta tools are published; the gateway respawns it (0.5 s, 2 s, 8 s) and re-publishes its tools when it is back.
+- `tools/call` is forwarded unchanged, with an id map so `notifications/cancelled` reaches the right inner request. An unknown tool name comes back as an error with a did-you-mean hint.
+- A new session is a new gateway process, so its state resets: it starts at the resident ten again.
+
+Rollback: set `toolGateway: false` (the default) and restart. The gateway is one extra process in front of the same `@playwright/mcp`; nothing else changes, and sessions immediately get the full `mcpCaps` surface back.
+
+Known limitation: MCP **progress notifications** from the inner server are not forwarded through the gateway (there is no progress-token translation), so a long tool call shows no incremental progress; the final result is unaffected.
+
+Verification: `npm test` runs the gateway unit tests (fake inner, no browser); `node scripts/gateway-smoke.mjs` drives a real headless Chromium through the enable flow, a screenshot image block and a cancellation; `node scripts/gateway-sweep.mjs` sends an empty-argument `tools/call` to every advertised tool and fails on any gateway-level routing error (`browser_annotate` stays pending until a human gesture, so it reports as a timeout).
 
 ## Rollback
 

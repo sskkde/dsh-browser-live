@@ -2,4 +2,6 @@ node_modules/
 .playwright-mcp/
 .agent-notes/
 .omo/
+.openviking/
 probe-*.mjs
+*.tgz
