@@ -192,3 +192,12 @@ test('the site key is the exact origin', () => {
   assert.equal(siteKeyForOrigin('https://example.test:8443/a/b?q=1'), 'https://example.test:8443')
   assert.equal(siteKeyForOrigin('not a url'), null)
 })
+
+test('force re-applies the current revision for an explicit refresh', async () => {
+  const coordinator = build()
+  const context = fakeContext()
+  await coordinator.prepare({ agent: agent('s1'), sessionId: 's1', context, entry: entry() })
+  const forced = await coordinator.prepare({ agent: agent('s1'), sessionId: 's1', context, entry: entry(), force: true })
+  assert.equal(forced.restored, true)
+  assert.equal(forced.revision, 'r1')
+})
