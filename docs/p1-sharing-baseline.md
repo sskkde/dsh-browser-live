@@ -15,6 +15,7 @@
 | [lib/sharing/auth-store.js](../lib/sharing/auth-store.js) | 按 `scopeId+siteKey+accountKey` 的不可变 revision；CAS（`expectedRevision`）+ 撤销 epoch 在同一临界区校验；`publish`/`revoke` 共用主键锁；目录 0700、文件 0600；temp→fsync→rename→fsync(dir)；`siteKey`/`accountKey` 编码为不透明路径组件并做 canonical 根包含校验；摘要与异常不含凭据 |
 | [lib/sharing/artifact-store.js](../lib/sharing/artifact-store.js) | 不可变对象 `objects/<uuid>/data.bin`；metadata 原子提交后才可检索；崩溃留下的孤儿对象被 `stats()` 计数但不进 `list()`；`index.json` 可删可重建；`.crdownload` 拒绝入库；`sourceUrl` 只存 origin；文件名只作展示元数据；导出名 `safeExportName()` 消毒 |
 | [lib/sharing/audit.js](../lib/sharing/audit.js) | 追加式 JSONL，文件 0600；凭据形字段替换为 `[redacted]`；URL 只留 origin；截断尾行被忽略而不是解析失败 |
+| [lib/sharing/coordinator.js](../lib/sharing/coordinator.js) | 按 origin 绑定解析账号；恢复前先清目标域 cookie（含上一次恢复触及的域），再写 cookie、一次性 epoch 标记和 init script；同一容器代与原 revision 不重复恢复；revoked 直接拒；原生路径在操作前恢复、操作后撤标记；MCP 路径用 `needsPrepare` 免去每次 CDP 往返 |
 
 ## 2. 开关与默认值
 
@@ -32,16 +33,15 @@ sharing:
 
 ## 3. 尚未完成（P2/P3 前置）
 
-1. **协调器**：把 `scope/policy/auth-store/artifact-store/audit` 串成一次浏览器调用前后的 prepare/collect；恢复流程必须先清目标 host cookie 再写入（G-1 结论）。
-2. **绑定与恢复**：站点/账号绑定表、按实例 generation 恢复、epoch 失效处理；`browser_live_state` 的 save/load 改造成走 AuthStore。
-3. **产物归集**：`browser_live_artifact` 工具（list/info/save），截图/下载采集器，`save` 改走宿主 `fs` 服务（当前 `browser_live_download save` 仍是裸 `copyFileSync`）。
-4. **故障注入**：进程中断、磁盘满、删除失败重试的集成用例（当前只有存储层的崩溃一致性单测）。
-5. **迁移演练**：v1 map → v2 的真实容器对账、legacy 容器退出新池的现场演练，以及回滚演练。
+1. **绑定写入与 save/load**：`browser_live_state save/load` 仍走旧 states 目录；要改成经 AuthStore 的显式发布（含 expectedRevision 与正向登录校验），并把绑定表接到配置。
+2. **产物归集**：`browser_live_artifact` 工具（list/info/save），截图/下载采集器，`save` 改走宿主 `fs` 服务（当前 `browser_live_download save` 仍是裸 `copyFileSync`）。
+3. **故障注入**：进程中断、磁盘满、删除失败重试的集成用例（当前只有存储层的崩溃一致性单测）。
+4. **迁移演练**：v1 map → v2 的真实容器对账、legacy 容器退出新池的现场演练，以及回滚演练。
 
 ## 4. 测试
 
 ```bash
-node --test "test/**/*.test.mjs"   # 100 项：gateway 14、recipe 10、admission 12、pool 10、policy 10、scope 7、gate 8、auth 9、artifact 15、audit 5
+node --test "test/**/*.test.mjs"   # 111 项：gateway 14、recipe 10、admission 12、pool 10、policy 10、scope 7、gate 8、auth 9、artifact 15、audit 5、coordinator 11
 node scripts/p0-auth-isolation.mjs # G-1 手动集成探针，需要本机 Chrome
 ```
 
