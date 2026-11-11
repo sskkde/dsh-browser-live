@@ -5,3 +5,4 @@ node_modules/
 .openviking/
 probe-*.mjs
 *.tgz
+.evidence/

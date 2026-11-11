@@ -24,6 +24,11 @@ function fakeStore(bytes) {
   }
 }
 
+const hostCtx = () => ({
+  waterfall: async () => undefined,
+  get: (name) => name === 'sandboxPolicy' ? { resolve: () => ({ mode: 'danger-full-access', workspaceRoot: '/' }) } : undefined,
+})
+
 function fakeFs(root) {
   return {
     async resolve(value) { return { targetKey: resolve(value) } },
@@ -49,6 +54,7 @@ test('a published artifact is written into the workspace', async () => {
   const result = await exportArtifact({
     store: fakeStore(Buffer.from('hello')),
     fileSystem: fakeFs(root),
+    ctx: hostCtx(),
     scopeId: 's',
     artifactId: 'a1',
     targetPath,
@@ -64,6 +70,7 @@ test('a target outside the workspace is refused', async () => {
     () => exportArtifact({
       store: fakeStore(Buffer.from('x')),
       fileSystem: fakeFs(root),
+      ctx: hostCtx(),
       scopeId: 's',
       artifactId: 'a1',
       targetPath: '/etc/passwd',
@@ -81,6 +88,7 @@ test('an existing file is never overwritten by default', async () => {
     () => exportArtifact({
       store: fakeStore(Buffer.from('new')),
       fileSystem: fakeFs(root),
+      ctx: hostCtx(),
       scopeId: 's',
       artifactId: 'a1',
       targetPath,
@@ -91,12 +99,30 @@ test('an existing file is never overwritten by default', async () => {
   assert.equal(readFileSync(targetPath, 'utf8'), 'keep me')
 })
 
+test('a missing sandbox policy fails closed instead of allowing the write', async () => {
+  const root = workspace()
+  const noPolicy = { waterfall: async () => undefined, get: () => undefined }
+  await assert.rejects(
+    () => exportArtifact({
+      store: fakeStore(Buffer.from('x')),
+      fileSystem: fakeFs(root),
+      ctx: noPolicy,
+      scopeId: 's',
+      artifactId: 'a1',
+      targetPath: join(root, 'out.bin'),
+      cwd: root,
+    }),
+    /sandbox policy is unavailable/,
+  )
+})
+
 test('an unknown artifact is refused', async () => {
   const root = workspace()
   await assert.rejects(
     () => exportArtifact({
       store: fakeStore(Buffer.from('x')),
       fileSystem: fakeFs(root),
+      ctx: hostCtx(),
       scopeId: 's',
       artifactId: 'missing',
       targetPath: join(root, 'out.bin'),
@@ -106,9 +132,16 @@ test('an unknown artifact is refused', async () => {
   )
 })
 
+test('a missing host authorization context fails closed', async () => {
+  await assert.rejects(
+    () => exportArtifact({ store: fakeStore(Buffer.from('x')), fileSystem: fakeFs('/tmp'), scopeId: 's', artifactId: 'a1', targetPath: 'x', cwd: '/' }),
+    /authorization context is unavailable/,
+  )
+})
+
 test('a missing host filesystem service fails closed', async () => {
   await assert.rejects(
-    () => exportArtifact({ store: fakeStore(Buffer.from('x')), fileSystem: null, scopeId: 's', artifactId: 'a1', targetPath: 'x', cwd: '/' }),
+    () => exportArtifact({ store: fakeStore(Buffer.from('x')), fileSystem: null, ctx: hostCtx(), scopeId: 's', artifactId: 'a1', targetPath: 'x', cwd: '/' }),
     /filesystem service is unavailable/,
   )
 })

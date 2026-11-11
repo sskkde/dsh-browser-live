@@ -144,7 +144,30 @@ test('a missing directory is an empty scan, not an error', async () => {
     sessionId: 'sess',
     index: new ArtifactIndex(join(tmpdir(), 'x.json')),
   })
-  assert.deepEqual(outcome, { published: [], skipped: 0, failed: [] })
+  assert.deepEqual(outcome, { published: [], skipped: 0, failed: [], unsupported: [] })
+})
+
+test('a non-image file in the screenshot directory is reported, not published as a screenshot', async () => {
+  const base = dir()
+  writeFileSync(join(base, 'trace.zip'), Buffer.from('PK'))
+  const store = fakeStore()
+  const outcome = await collectSessionArtifacts({ store, scopeId: 's', sessionId: 'sess', baseDir: base })
+  assert.equal(outcome.published.length, 0)
+  assert.deepEqual(outcome.unsupported.map((item) => item.name), ['trace.zip'])
+})
+
+test('the MCP output directory publishes images and PDFs and skips side files', async () => {
+  const base = dir()
+  const mcp = join(base, 'mcp')
+  mkdirSync(mcp, { recursive: true })
+  writeFileSync(join(mcp, 'page-1.png'), Buffer.from('png'))
+  writeFileSync(join(mcp, 'report.pdf'), Buffer.from('pdf'))
+  writeFileSync(join(mcp, 'page-1.yml'), Buffer.from('snapshot'))
+  writeFileSync(join(mcp, 'console-1.log'), Buffer.from('log'))
+  const store = fakeStore()
+  const outcome = await collectSessionArtifacts({ store, scopeId: 's', sessionId: 'sess', baseDir: base, mcpDir: mcp })
+  assert.deepEqual(outcome.published.map((item) => `${item.name}:${item.kind}`).sort(), ['page-1.png:screenshot', 'report.pdf:pdf'])
+  assert.deepEqual(outcome.unsupported.map((item) => item.name).sort(), ['console-1.log', 'page-1.yml'])
 })
 
 test('a session scan covers screenshots and downloads with separate indexes', async () => {
@@ -157,4 +180,28 @@ test('a session scan covers screenshots and downloads with separate indexes', as
   assert.deepEqual(first.published.map((item) => item.name).sort(), ['recipe-1.png', 'report.pdf'])
   const second = await collectSessionArtifacts({ store, scopeId: 's', sessionId: 'sess', baseDir: base })
   assert.equal(second.published.length, 0)
+})
+
+test('a file that grows while being read is not published as complete', async () => {
+  const folder = dir()
+  const file = join(folder, 'late.png')
+  writeFileSync(file, Buffer.from('partial'))
+  const store = fakeStore()
+  const original = store.stage
+  store.stage = async (args) => {
+    const record = await original(args)
+    writeFileSync(file, Buffer.from('partial-and-more'))
+    return record
+  }
+  store.discard = async () => undefined
+  const index = new ArtifactIndex(join(folder, '.index.json'))
+  const outcome = await collectDirectory({ dir: folder, kind: 'screenshot', store, scopeId: 's', sessionId: 'sess', index })
+  assert.equal(outcome.published.length, 0)
+  assert.equal(outcome.failed.length, 1)
+  assert.match(outcome.failed[0].error, /still being written/)
+  assert.equal(index.get('late.png', fileKey({ size: 6, mtimeMs: 0 })), null)
+})
+
+test('file identity distinguishes same-size changes within one millisecond', () => {
+  assert.notEqual(fileKey({ size: 4, mtimeNs: 1_000_000_000n }), fileKey({ size: 4, mtimeNs: 1_000_000_001n }))
 })

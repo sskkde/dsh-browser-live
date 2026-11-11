@@ -15,7 +15,7 @@
 | [lib/sharing/auth-store.js](../lib/sharing/auth-store.js) | 按 `scopeId+siteKey+accountKey` 的不可变 revision；CAS（`expectedRevision`）+ 撤销 epoch 在同一临界区校验；`publish`/`revoke` 共用主键锁；目录 0700、文件 0600；temp→fsync→rename→fsync(dir)；`siteKey`/`accountKey` 编码为不透明路径组件并做 canonical 根包含校验；摘要与异常不含凭据 |
 | [lib/sharing/artifact-store.js](../lib/sharing/artifact-store.js) | 不可变对象 `objects/<uuid>/data.bin`；metadata 原子提交后才可检索；崩溃留下的孤儿对象被 `stats()` 计数但不进 `list()`；`index.json` 可删可重建；`.crdownload` 拒绝入库；`sourceUrl` 只存 origin；文件名只作展示元数据；导出名 `safeExportName()` 消毒 |
 | [lib/sharing/audit.js](../lib/sharing/audit.js) | 追加式 JSONL，文件 0600；凭据形字段替换为 `[redacted]`；URL 只留 origin；截断尾行被忽略而不是解析失败 |
-| [lib/sharing/coordinator.js](../lib/sharing/coordinator.js) | 按 origin 绑定解析账号；恢复前先清目标域 cookie（含上一次恢复触及的域），再写 cookie、一次性 epoch 标记和 init script；同一容器代与原 revision 不重复恢复；revoked 直接拒；原生路径在操作前恢复、操作后撤标记；MCP 路径用 `needsPrepare` 免去每次 CDP 往返 |
+| [lib/sharing/coordinator.js](../lib/sharing/coordinator.js) | 按 origin 绑定解析账号；恢复前先清目标域 cookie（含上一次恢复触及的域），再写 cookie、一次性 `epoch:revision` 标记和 init script；同一容器代与原 revision 不重复恢复；revoked 直接拒；原生路径在操作前恢复、操作后撤标记；MCP 路径用 `needsPrepare` 免去每次 CDP 往返 |
 
 ## 2. 开关与默认值
 
@@ -50,3 +50,14 @@ node scripts/p0-auth-isolation.mjs # G-1 手动集成探针，需要本机 Chrom
 - 身份仍是"同一 profile 内可信主体"，不是多租户隔离；方案 3.1 的 0700/0600 只防误读，不防同 UID 读取。
 - `sharing.enabled=true` 后，所有会话与子代理共享同一 scope；这是当前运行决定，不是默认值。
 - 产物完成信号仍靠目录 rename 约定；MCP 截图只扫 `--output-dir`。
+
+## 6. 第二轮补充（2026-11-10）
+
+- `allocate` 的 LRU 同时使用 busy（agent 正在 turn）与 lease；`release` 在最后一个 lease 结束时才真正回收。
+- 回收失败（容器删除或 nginx 路由删除）保留 `state=deleting`、`lastError`、`retryAt`，槽位不复用；sweep/allocate 触发重试。
+- `containerGenerations` 持久化，容器重建/重新分配都递增，coordinator 的实例键因此能区分重建实例。
+- 容器带 `dsh.browser-live.managed/session/generation` 标签；`reconcile()` 双向对账，未知容器与未打标签的 `neko*` 只报告、不删除。
+- v1 map 首次写入前备份为 `neko-browser-live.map.json.v1.bak`；legacy 条目只进 `retired`。
+- Docker inspect 只把 “No such container/object” 判为 absent，其他错误保留条目与槽位；nginx 目录不可读视为清理失败。
+- 回收前调用 `beforeRelease` 做最后一次产物采集；采集有 marker 启动补偿与定时器。
+- 测试：`test/pool-safety.test.mjs` 12 项（迁移备份、generation、lease 延迟、LRU、失败保留、槽位不复用、对账、未知 inspect、终采顺序、status 只读）。

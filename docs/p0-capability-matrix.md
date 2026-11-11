@@ -140,3 +140,20 @@
 
 **G0 结论：三条满足、一条部分满足。** 产物信号的“部分”是已知实现约束（扫描 + rename 约定），不影响 P1 开工；P2 落地采集器时按该约定实现，并在 A10 里显式验收。
 
+
+## 9. 第二轮收口后的能力状态（2026-11-10）
+
+本节不重测 P0 探针，只记录第二轮代码对前述能力/缺口的落点与证据等级。证据等级：`E1`=真实后端/真实命令；`E2`=装配级单测；`E3`=纯逻辑单测；`未测`=本轮未执行。
+
+| 能力/缺口 | 第二轮落点 | 证据等级 | 备注 |
+|---|---|---|---|
+| C1–C4 首请求恢复 | `coordinator.prepare({targetUrl})` 支持空白实例；init script 按 revision 追加、marker 播种后自毁 | **E1（2026-11-11 远端隔离）** | 空白 B 首段脚本观测到 `sid=WORK`/`pref=dark`；见 `docs/remote-acceptance-2026-11-11.md` |
+| C5 账号/SSO 冲突 | `capture.selectCapture` + 绑定 `cookieDomains`/`ssoOrigins`；换号先清旧域与旧播种键 | E3 | SSO 真实双域待授权 |
+| C9/C10 MCP 与 gateway | provider 对两条路径都取目标 URL；MCP 传会话级 `--output-dir` 并归集图片/PDF | E2 | 真实 MCP 待授权 |
+| C11/C12 下载完成 | 采集器只认最终名；定时扫描（默认 60s）＋启动 marker 补偿＋回收前终采 | **E1（下载完成）+ E3（晚完成/重启）** | 远端真实下载落盘并发布；晚完成事件仍未测 |
+| C14 写授权 | `export.js` 走 `fs.resolve/contains` + `fs/write-intent` + sandbox policy + `O_EXCL`；真实 `dsh-fs-local` 8 项通过 | **E1** | 宿主 0.2.1-rc.2 无二进制写 API，见 P2/P3 收口文档限制 |
+| C15 身份 | 不改变：仍是管理员单组白名单 | — | 不宣称多租户 |
+| C16 槽位 0 | P1 已取消 legacy 例外；新池槽位 0 独立容器/卷/viewer | **E1（远端单槽）** | A/B 串行各得独立容器/卷；并行/迁移对账待授权 |
+| 配额 | `ArtifactStore(quotaBytes)` stage/publish 双窗口；默认 null | E3 | 达到配额停止发布、保留源、不删历史 |
+
+**结论更新（2026-11-11）**：远端 `<remote-test-host>` 已完成真实浏览器/容器单场景（A 保存→B 首请求恢复→撤销→截图/下载回收后查询）9 步；A01 并行、A08 MCP/gateway、A10 晚完成、A12/A13 故障注入、A15 迁移回滚仍未执行，不能声称 G4 通过。
